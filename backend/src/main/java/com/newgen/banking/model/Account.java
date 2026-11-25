@@ -13,10 +13,6 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
-/**
- * Account Entity representing the 'account' database table.
- * Stores financial accounts held by customers (Checking, Savings, etc.).
- */
 @Entity
 @Table(name = "account")
 public class Account {
@@ -50,7 +46,6 @@ public class Account {
     @Column(name = "updated_at", nullable = false, columnDefinition = "TIMESTAMPTZ")
     private OffsetDateTime updatedAt;
 
-    // Default no-argument constructor required by JPA
     public Account() {
     }
 

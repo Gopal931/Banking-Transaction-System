@@ -16,12 +16,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Integration tests for AccountRepository using the existing PostgreSQL database.
- * Annotated with @Transactional so test-created records are rolled back safely,
- * preserving existing seed data.
- * Requires DB_PASSWORD environment variable to connect to PostgreSQL.
- */
 @SpringBootTest
 @Transactional
 @EnabledIfEnvironmentVariable(named = "DB_PASSWORD", matches = ".+")
