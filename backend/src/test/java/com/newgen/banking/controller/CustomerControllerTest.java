@@ -3,6 +3,7 @@ package com.newgen.banking.controller;
 import com.newgen.banking.exception.GlobalExceptionHandler;
 import com.newgen.banking.model.Customer;
 import com.newgen.banking.repository.CustomerRepository;
+import com.newgen.banking.service.AccountService;
 import com.newgen.banking.service.CustomerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -29,12 +30,15 @@ class CustomerControllerTest {
 
     private MockMvc mockMvc;
     private InMemoryCustomerRepository inMemoryRepo;
+    private AccountControllerTest.InMemoryAccountRepository accountRepo;
 
     @BeforeEach
     void setUp() {
         inMemoryRepo = new InMemoryCustomerRepository();
+        accountRepo = new AccountControllerTest.InMemoryAccountRepository();
         CustomerService customerService = new CustomerService(inMemoryRepo);
-        CustomerController customerController = new CustomerController(customerService);
+        AccountService accountService = new AccountService(accountRepo, inMemoryRepo);
+        CustomerController customerController = new CustomerController(customerService, accountService);
 
         mockMvc = MockMvcBuilders.standaloneSetup(customerController)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -306,6 +310,39 @@ class CustomerControllerTest {
                 .andExpect(jsonPath("$.fieldErrors.firstName").isNotEmpty())
                 .andExpect(jsonPath("$.fieldErrors.lastName").isNotEmpty())
                 .andExpect(jsonPath("$.fieldErrors.phone").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("15. Retrieve all accounts for existing customer returns 200 OK")
+    void testGetCustomerAccountsSuccess() throws Exception {
+        Customer owner = inMemoryRepo.findById(1L).orElseThrow();
+        accountRepo.save(new com.newgen.banking.model.Account(owner, "ACCT-CHK-8921", "CHECKING", new java.math.BigDecimal("12450.25"), "USD", "ACTIVE"));
+        accountRepo.save(new com.newgen.banking.model.Account(owner, "ACCT-SAV-3410", "SAVINGS", new java.math.BigDecimal("35800.50"), "USD", "ACTIVE"));
+
+        mockMvc.perform(get("/api/customers/1/accounts")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].customerId").value(1));
+    }
+
+    @Test
+    @DisplayName("16. Retrieve accounts for customer with no accounts returns 200 OK with empty list")
+    void testGetCustomerAccountsEmptyList() throws Exception {
+        mockMvc.perform(get("/api/customers/1/accounts")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("17. Retrieve accounts for nonexistent customer returns 404 NOT FOUND")
+    void testGetCustomerAccountsCustomerNotFound() throws Exception {
+        mockMvc.perform(get("/api/customers/99999/accounts")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Customer not found with id: 99999"));
     }
 
     static class InMemoryCustomerRepository implements CustomerRepository {

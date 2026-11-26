@@ -5,9 +5,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
 import java.util.Map;
 
-/**
- * Standard error response payload returned by the GlobalExceptionHandler.
- */
+
+ // Standard error response payload returned by the GlobalExceptionHandler.
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ErrorResponse {
 

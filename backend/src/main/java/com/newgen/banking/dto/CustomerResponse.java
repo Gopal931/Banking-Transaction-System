@@ -4,9 +4,6 @@ import com.newgen.banking.model.Customer;
 
 import java.time.OffsetDateTime;
 
-/**
- * Response DTO returned after customer operations.
- */
 public class CustomerResponse {
 
     private Long id;

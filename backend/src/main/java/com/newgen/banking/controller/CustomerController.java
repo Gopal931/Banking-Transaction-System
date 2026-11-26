@@ -1,7 +1,9 @@
 package com.newgen.banking.controller;
 
+import com.newgen.banking.dto.AccountResponse;
 import com.newgen.banking.dto.CustomerRequest;
 import com.newgen.banking.dto.CustomerResponse;
+import com.newgen.banking.service.AccountService;
 import com.newgen.banking.service.CustomerService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -17,16 +19,18 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 /**
- * REST Controller for customer registration and retrieval endpoints.
+ * REST Controller for customer registration, retrieval, and update endpoints.
  */
 @RestController
 @RequestMapping("/api/customers")
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final AccountService accountService;
 
-    public CustomerController(CustomerService customerService) {
+    public CustomerController(CustomerService customerService, AccountService accountService) {
         this.customerService = customerService;
+        this.accountService = accountService;
     }
 
     @PostMapping
@@ -49,5 +53,10 @@ public class CustomerController {
     public ResponseEntity<CustomerResponse> updateCustomer(@PathVariable Long id,
                                                            @Valid @RequestBody CustomerRequest request) {
         return ResponseEntity.ok(customerService.updateCustomer(id, request));
+    }
+
+    @GetMapping("/{customerId}/accounts")
+    public ResponseEntity<List<AccountResponse>> getAccountsByCustomerId(@PathVariable Long customerId) {
+        return ResponseEntity.ok(accountService.getAccountsByCustomerId(customerId));
     }
 }
