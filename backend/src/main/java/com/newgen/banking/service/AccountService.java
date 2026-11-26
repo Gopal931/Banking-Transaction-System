@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
- // Service handling bank account creation and validation.
+ //Service handling bank account creation and validation.
 
 @Service
 public class AccountService {
@@ -89,9 +89,7 @@ public class AccountService {
         return AccountResponse.fromEntity(savedAccount);
     }
 
-    /**
-     * Retrieves an account by its database ID.
-     */
+     //Retrieves an account by its database ID.
     @Transactional(readOnly = true)
     public AccountResponse getAccountById(Long id) {
         Account account = accountRepository.findById(id)
@@ -99,9 +97,9 @@ public class AccountService {
         return AccountResponse.fromEntity(account);
     }
 
-    /**
-     * Retrieves an account by its unique account number.
-     */
+    
+     //Retrieves an account by its unique account number.
+    
     @Transactional(readOnly = true)
     public AccountResponse getAccountByAccountNumber(String accountNumber) {
         Account account = accountRepository.findByAccountNumber(accountNumber.trim())
@@ -109,9 +107,9 @@ public class AccountService {
         return AccountResponse.fromEntity(account);
     }
 
-    /**
-     * Retrieves all accounts belonging to an existing customer.
-     */
+ 
+     //Retrieves all accounts belonging to an existing customer.
+  
     @Transactional(readOnly = true)
     public List<AccountResponse> getAccountsByCustomerId(Long customerId) {
         if (!customerRepository.existsById(customerId)) {
@@ -123,9 +121,9 @@ public class AccountService {
                 .toList();
     }
 
-    /**
-     * Validates that an account exists, is ACTIVE, and optionally belongs to customerId.
-     */
+    
+     // Validates that an account exists, is ACTIVE, and optionally belongs to customerId.
+    
     @Transactional(readOnly = true)
     public AccountResponse validateAccount(Long accountId, Long customerId) {
         Account account = validateActiveAccount(accountId);
@@ -135,9 +133,9 @@ public class AccountService {
         return AccountResponse.fromEntity(account);
     }
 
-    /**
-     * Validates that an account exists and is currently ACTIVE.
-     */
+
+     // Validates that an account exists and is currently ACTIVE.
+   
     @Transactional(readOnly = true)
     public Account validateActiveAccount(Long accountId) {
         Account account = accountRepository.findById(accountId)
@@ -149,9 +147,9 @@ public class AccountService {
         return account;
     }
 
-    /**
-     * Validates that an account exists and belongs to the specified customer.
-     */
+
+     //Validates that an account exists and belongs to the specified customer.
+    
     @Transactional(readOnly = true)
     public Account validateAccountOwnership(Long accountId, Long customerId) {
         Account account = accountRepository.findById(accountId)
@@ -160,9 +158,9 @@ public class AccountService {
         return account;
     }
 
-    /**
-     * Updates an account's status following allowed transition rules, preserving balance and other fields.
-     */
+   
+     //Updates an account's status following allowed transition rules, preserving balance and other fields.
+    
     @Transactional
     public AccountResponse updateAccountStatus(Long accountId, String requestedStatus) {
         Account account = accountRepository.findById(accountId)

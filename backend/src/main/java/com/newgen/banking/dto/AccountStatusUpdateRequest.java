@@ -3,9 +3,7 @@ package com.newgen.banking.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-/**
- * Request DTO for controlled account status updates.
- */
+ // Request DTO for controlled account status updates.
 public class AccountStatusUpdateRequest {
 
     @NotBlank(message = "Status is required")
