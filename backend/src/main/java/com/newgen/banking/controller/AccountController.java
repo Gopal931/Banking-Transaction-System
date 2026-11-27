@@ -3,7 +3,10 @@ package com.newgen.banking.controller;
 import com.newgen.banking.dto.AccountRequest;
 import com.newgen.banking.dto.AccountResponse;
 import com.newgen.banking.dto.AccountStatusUpdateRequest;
+import com.newgen.banking.dto.PagedResponse;
+import com.newgen.banking.dto.TransactionResponse;
 import com.newgen.banking.service.AccountService;
+import com.newgen.banking.service.TransactionService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
 
     private final AccountService accountService;
+    private final TransactionService transactionService;
 
-    public AccountController(AccountService accountService) {
+    public AccountController(AccountService accountService, TransactionService transactionService) {
         this.accountService = accountService;
+        this.transactionService = transactionService;
     }
 
     @PostMapping
@@ -55,5 +60,13 @@ public class AccountController {
             @PathVariable Long id,
             @Valid @RequestBody AccountStatusUpdateRequest request) {
         return ResponseEntity.ok(accountService.updateAccountStatus(id, request.getStatus()));
+    }
+
+    @GetMapping("/{accountId}/transactions")
+    public ResponseEntity<PagedResponse<TransactionResponse>> getAccountTransactions(
+            @PathVariable Long accountId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(transactionService.getAccountTransactions(accountId, page, size));
     }
 }

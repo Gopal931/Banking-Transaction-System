@@ -42,6 +42,10 @@ public class TransactionResponse {
         this.createdAt = createdAt;
     }
 
+    public static TransactionResponse fromEntity(BankTransaction tx) {
+        return fromEntity(tx, null);
+    }
+
     public static TransactionResponse fromEntity(BankTransaction tx, BigDecimal updatedBalance) {
         return new TransactionResponse(
                 tx.getId(),

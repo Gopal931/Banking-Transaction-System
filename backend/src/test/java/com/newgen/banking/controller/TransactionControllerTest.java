@@ -31,6 +31,7 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -496,6 +497,72 @@ class TransactionControllerTest {
                 .isEqualByComparingTo("500.00");
     }
 
+    @Test
+    @DisplayName("18. Retrieve DEPOSIT, WITHDRAWAL, and TRANSFER transactions by ID and reference")
+    void testRetrieveTransactionsByIdAndReference() throws Exception {
+        BankTransaction deposit = txRepo.save(new BankTransaction(
+                "TXN-DEP-001", null, activeAccount, "DEPOSIT",
+                new BigDecimal("200.00"), "USD", "SUCCESS", "Deposit ref test"));
+        BankTransaction withdrawal = txRepo.save(new BankTransaction(
+                "TXN-WDR-002", activeAccount, null, "WITHDRAWAL",
+                new BigDecimal("100.00"), "USD", "SUCCESS", "Withdrawal ref test"));
+        BankTransaction transfer = txRepo.save(new BankTransaction(
+                "TXN-TRF-003", activeAccount, targetActiveAccount, "TRANSFER",
+                new BigDecimal("150.00"), "USD", "SUCCESS", "Transfer ref test"));
+
+        // Deposit by ID (sourceAccountId null)
+        mockMvc.perform(get("/api/transactions/" + deposit.getId()).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(deposit.getId()))
+                .andExpect(jsonPath("$.transactionReference").value("TXN-DEP-001"))
+                .andExpect(jsonPath("$.transactionType").value("DEPOSIT"))
+                .andExpect(jsonPath("$.sourceAccountId").doesNotExist())
+                .andExpect(jsonPath("$.targetAccountId").value(activeAccount.getId()))
+                .andExpect(jsonPath("$.amount").value(200.00))
+                .andExpect(jsonPath("$.status").value("SUCCESS"));
+
+        // Withdrawal by reference (targetAccountId null)
+        mockMvc.perform(get("/api/transactions/reference/TXN-WDR-002").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(withdrawal.getId()))
+                .andExpect(jsonPath("$.transactionType").value("WITHDRAWAL"))
+                .andExpect(jsonPath("$.sourceAccountId").value(activeAccount.getId()))
+                .andExpect(jsonPath("$.targetAccountId").doesNotExist());
+
+        // Transfer by ID and reference (both source and target present)
+        mockMvc.perform(get("/api/transactions/" + transfer.getId()).accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sourceAccountId").value(activeAccount.getId()))
+                .andExpect(jsonPath("$.targetAccountId").value(targetActiveAccount.getId()));
+
+        mockMvc.perform(get("/api/transactions/reference/TXN-TRF-003").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(transfer.getId()))
+                .andExpect(jsonPath("$.transactionType").value("TRANSFER"));
+    }
+
+    @Test
+    @DisplayName("19. Retrieve nonexistent transaction by ID or reference returns 404, blank reference returns 400")
+    void testRetrieveTransactionNotFoundAndBlankReference() throws Exception {
+        mockMvc.perform(get("/api/transactions/99999").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Transaction not found with id: 99999"));
+
+        mockMvc.perform(get("/api/transactions/reference/TXN-MISSING-999").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").value("Transaction not found with reference: TXN-MISSING-999"));
+
+        mockMvc.perform(get("/api/transactions/reference/   ").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Transaction reference must not be blank"));
+
+        assertThatThrownBy(() -> transactionService.getTransactionByReference(" "))
+                .isInstanceOf(InvalidRequestException.class);
+    }
+
     static class InMemoryBankTransactionRepository implements BankTransactionRepository {
         private final Map<Long, BankTransaction> store = new ConcurrentHashMap<>();
         private long idSequence = 0L;
@@ -515,6 +582,21 @@ class TransactionControllerTest {
         @Override
         public List<BankTransaction> findByTransactionType(String transactionType) {
             return store.values().stream().filter(t -> transactionType.equals(t.getTransactionType())).toList();
+        }
+
+        @Override
+        public Page<BankTransaction> findByAccountId(Long accountId, Pageable pageable) {
+            List<BankTransaction> matching = store.values().stream()
+                    .filter(t -> (t.getSourceAccount() != null && accountId.equals(t.getSourceAccount().getId()))
+                            || (t.getTargetAccount() != null && accountId.equals(t.getTargetAccount().getId())))
+                    .sorted(Comparator.comparing(BankTransaction::getCreatedAt).reversed()
+                            .thenComparing(Comparator.comparing(BankTransaction::getId).reversed()))
+                    .toList();
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min(start + pageable.getPageSize(), matching.size());
+            List<BankTransaction> slice = start >= matching.size() ? Collections.emptyList() : matching.subList(start, end);
+            return new org.springframework.data.domain.PageImpl<>(slice, pageable, matching.size());
         }
 
         @Override

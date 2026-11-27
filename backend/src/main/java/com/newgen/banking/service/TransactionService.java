@@ -1,6 +1,7 @@
 package com.newgen.banking.service;
 
 import com.newgen.banking.dto.DepositRequest;
+import com.newgen.banking.dto.PagedResponse;
 import com.newgen.banking.dto.TransactionResponse;
 import com.newgen.banking.dto.TransferRequest;
 import com.newgen.banking.dto.WithdrawRequest;
@@ -14,6 +15,10 @@ import com.newgen.banking.model.TransactionAudit;
 import com.newgen.banking.repository.AccountRepository;
 import com.newgen.banking.repository.BankTransactionRepository;
 import com.newgen.banking.repository.TransactionAuditRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +36,7 @@ import java.time.format.DateTimeFormatter;
 public class TransactionService {
 
     private static final int MAX_REF_ATTEMPTS = 5;
+    private static final int MAX_PAGE_SIZE = 100;
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.BASIC_ISO_DATE;
 
@@ -155,6 +161,50 @@ public class TransactionService {
         saveAudit(savedTx, targetAccount, "CREDIT", amount, targetPreviousBalance, targetNewBalance, now);
 
         return TransactionResponse.fromEntity(savedTx, sourceNewBalance);
+    }
+
+     //Retrieves a transaction by its database ID.
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransactionById(Long id) {
+        BankTransaction tx = bankTransactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with id: " + id));
+        return TransactionResponse.fromEntity(tx);
+    }
+
+     //Retrieves a transaction by its unique transaction reference.
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransactionByReference(String reference) {
+        if (reference == null || reference.isBlank()) {
+            throw new InvalidRequestException("Transaction reference must not be blank");
+        }
+        String trimmedRef = reference.trim();
+        BankTransaction tx = bankTransactionRepository.findByTransactionReference(trimmedRef)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with reference: " + trimmedRef));
+        return TransactionResponse.fromEntity(tx);
+    }
+
+    /**
+     * Retrieves paginated transaction history for an account (as source or target), newest first.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<TransactionResponse> getAccountTransactions(Long accountId, int page, int size) {
+        if (page < 0) {
+            throw new InvalidRequestException("Page number must be zero or positive");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new InvalidRequestException("Page size must be between 1 and " + MAX_PAGE_SIZE);
+        }
+        if (!accountRepository.existsById(accountId)) {
+            throw new ResourceNotFoundException("Account not found with id: " + accountId);
+        }
+
+        Pageable pageable = PageRequest.of(
+                page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        Page<TransactionResponse> transactions = bankTransactionRepository
+                .findByAccountId(accountId, pageable)
+                .map(TransactionResponse::fromEntity);
+
+        return PagedResponse.fromPage(transactions);
     }
 
     private BigDecimal validatePositiveAmount(BigDecimal rawAmount, String operation) {

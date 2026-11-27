@@ -2,10 +2,12 @@ package com.newgen.banking.controller;
 
 import com.newgen.banking.exception.GlobalExceptionHandler;
 import com.newgen.banking.model.Account;
+import com.newgen.banking.model.BankTransaction;
 import com.newgen.banking.model.Customer;
 import com.newgen.banking.repository.AccountRepository;
 import com.newgen.banking.repository.CustomerRepository;
 import com.newgen.banking.service.AccountService;
+import com.newgen.banking.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,13 +35,17 @@ class AccountControllerTest {
 
     private MockMvc mockMvc;
     private InMemoryAccountRepository accountRepo;
+    private TransactionControllerTest.InMemoryBankTransactionRepository txRepo;
 
     @BeforeEach
     void setUp() {
         accountRepo = new InMemoryAccountRepository();
+        txRepo = new TransactionControllerTest.InMemoryBankTransactionRepository();
         CustomerRepository customerRepo = new CustomerControllerTest.InMemoryCustomerRepository();
         AccountService accountService = new AccountService(accountRepo, customerRepo);
-        AccountController accountController = new AccountController(accountService);
+        TransactionService transactionService = new TransactionService(
+                accountRepo, txRepo, new TransactionControllerTest.InMemoryTransactionAuditRepository());
+        AccountController accountController = new AccountController(accountService, transactionService);
 
         mockMvc = MockMvcBuilders.standaloneSetup(accountController)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -326,6 +332,87 @@ class AccountControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Invalid status transition")));
+    }
+
+    @Test
+    @DisplayName("17. Paginated transaction history returns newest first, includes deposit/withdrawal/transfer for source & target")
+    void testPaginatedTransactionHistory() throws Exception {
+        Customer owner = new Customer("Alex", "Morgan", "alex.morgan@example.com", "+1-555-0101", "ACTIVE");
+        owner.setId(1L);
+        Account acc1 = accountRepo.save(new Account(owner, "ACCT-CHK-8921", "CHECKING", new java.math.BigDecimal("1000.00"), "USD", "ACTIVE"));
+        Account acc2 = accountRepo.save(new Account(owner, "ACCT-SAV-3410", "SAVINGS", new java.math.BigDecimal("500.00"), "USD", "ACTIVE"));
+
+        java.time.OffsetDateTime t1 = java.time.OffsetDateTime.parse("2026-11-20T10:00:00Z");
+        java.time.OffsetDateTime t2 = java.time.OffsetDateTime.parse("2026-11-21T10:00:00Z");
+        java.time.OffsetDateTime t3 = java.time.OffsetDateTime.parse("2026-11-22T10:00:00Z");
+
+        txRepo.save(new BankTransaction(null, "TXN-1", null, acc1, "DEPOSIT", new java.math.BigDecimal("100.00"), "USD", "SUCCESS", "Deposit", t1));
+        txRepo.save(new BankTransaction(null, "TXN-2", acc1, null, "WITHDRAWAL", new java.math.BigDecimal("50.00"), "USD", "SUCCESS", "Withdrawal", t2));
+        txRepo.save(new BankTransaction(null, "TXN-3", acc1, acc2, "TRANSFER", new java.math.BigDecimal("200.00"), "USD", "SUCCESS", "Transfer", t3));
+
+        // Page 0, size 2 -> TXN-3 (newest), TXN-2
+        mockMvc.perform(get("/api/accounts/" + acc1.getId() + "/transactions")
+                        .param("page", "0")
+                        .param("size", "2")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2))
+                .andExpect(jsonPath("$.hasNext").value(true))
+                .andExpect(jsonPath("$.hasPrevious").value(false))
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content[0].transactionReference").value("TXN-3"))
+                .andExpect(jsonPath("$.content[1].transactionReference").value("TXN-2"));
+
+        // Page 1, size 2 -> TXN-1 (oldest deposit)
+        mockMvc.perform(get("/api/accounts/" + acc1.getId() + "/transactions")
+                        .param("page", "1")
+                        .param("size", "2")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.hasPrevious").value(true))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].transactionReference").value("TXN-1"));
+
+        // Transfer also visible to target account (acc2)
+        mockMvc.perform(get("/api/accounts/" + acc2.getId() + "/transactions")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].transactionReference").value("TXN-3"));
+    }
+
+    @Test
+    @DisplayName("18. Account with no transactions returns empty page; nonexistent account returns 404; invalid page/size returns 400")
+    void testTransactionHistoryEdgeAndErrorCases() throws Exception {
+        Customer owner = new Customer("Alex", "Morgan", "alex.morgan@example.com", "+1-555-0101", "ACTIVE");
+        owner.setId(1L);
+        Account emptyAcc = accountRepo.save(new Account(owner, "ACCT-EMP-0001", "CHECKING", new java.math.BigDecimal("0.00"), "USD", "ACTIVE"));
+
+        mockMvc.perform(get("/api/accounts/" + emptyAcc.getId() + "/transactions")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.totalPages").value(0))
+                .andExpect(jsonPath("$.hasNext").value(false))
+                .andExpect(jsonPath("$.hasPrevious").value(false))
+                .andExpect(jsonPath("$.content.length()").value(0));
+
+        mockMvc.perform(get("/api/accounts/99999/transactions").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/accounts/" + emptyAcc.getId() + "/transactions").param("page", "-1"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/accounts/" + emptyAcc.getId() + "/transactions").param("size", "0"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(get("/api/accounts/" + emptyAcc.getId() + "/transactions").param("size", "101"))
+                .andExpect(status().isBadRequest());
     }
 
     static class InMemoryAccountRepository implements AccountRepository {
