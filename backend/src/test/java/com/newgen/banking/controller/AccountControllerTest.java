@@ -362,6 +362,11 @@ class AccountControllerTest {
         }
 
         @Override
+        public Optional<Account> findByIdForUpdate(Long id) {
+            return findById(id);
+        }
+
+        @Override
         public <S extends Account> S save(S entity) {
             if (entity.getId() == null) {
                 entity.setId(++idSequence);
